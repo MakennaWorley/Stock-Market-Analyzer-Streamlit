@@ -1,9 +1,14 @@
-import streamlit as st
-import plotly.graph_objects as go
-from utils.tools import fetch_stock_data
-import pandas as pd
 import io
 import zipfile
+
+import streamlit as st
+import plotly.graph_objects as go
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from utils.tools import fetch_stock_data, save_histogram_as_png, get_headline_sentiments
+from utils.news import get_news_headlines
 
 st.set_page_config(layout="wide")
 st.title("📈 Stock Market Analyzer")
@@ -19,6 +24,7 @@ with col2:
 
 ma_1 = st.number_input("Short MA (days)", min_value=1, max_value=100, value=20)
 ma_2 = st.number_input("Long MA (days)", min_value=5, max_value=200, value=50)
+use_numpy_ma = st.checkbox("Use NumPy for Moving Averages")
 
 if "results" not in st.session_state:
     st.session_state["results"] = {}
@@ -26,11 +32,16 @@ if "results" not in st.session_state:
 if st.button("Analyze"):
     if not selected_tickers:
         st.warning("Please select at least one ticker.")
+    elif start >= end:
+        st.error("🚫 Start date must be before end date.")
     else:
         st.session_state["results"].clear()
         for ticker in selected_tickers:
             try:
-                df = fetch_stock_data(ticker, str(start), str(end), ma_1, ma_2)
+                with st.spinner(f"Fetching data for {ticker}..."):
+                    df = fetch_stock_data(ticker, str(start), str(end), ma_1, ma_2)
+
+                df = fetch_stock_data(ticker, str(start), str(end), ma_1, ma_2, use_numpy_ma)
                 st.session_state["results"][ticker] = df
 
             except Exception as e:
@@ -49,11 +60,24 @@ if st.session_state["results"]:
 
             # Return histogram
             st.markdown(f"### 📉 Daily Return Histogram — {ticker}")
-            st.bar_chart(df['Return'].dropna())
+            fig, ax = plt.subplots()
+            sns.histplot(df['Return'].dropna(), bins=30, kde=True, ax=ax)
+            ax.set_title(f"{ticker} Return Distribution")
+            ax.set_xlabel("Daily Return")
+            ax.set_ylabel("Frequency")
+            st.pyplot(fig)
+
+            buf = save_histogram_as_png(df['Return'], ticker)
+            st.download_button(
+                label=f"⬇️ Download Histogram PNG",
+                data=buf,
+                file_name=f"{ticker}_histogram.png",
+                mime="image/png"
+            )
 
             # Full data
             st.markdown(f"### 📄 Full Data — {ticker}")
-            st.dataframe(df)  # Show everything now!
+            st.dataframe(df)
 
             # Per-ticker CSV download
             csv = df.to_csv(index=True).encode('utf-8')
@@ -63,6 +87,23 @@ if st.session_state["results"]:
                 file_name=f"{ticker}_stock_data.csv",
                 mime='text/csv'
             )
+
+            if st.checkbox(f"🗞 Show News Headlines for {ticker}", key=f"{ticker}_news"):
+                try:
+                    headlines = get_news_headlines(ticker)
+                    if headlines:
+                        scored = get_headline_sentiments(headlines)
+                        for headline, source, score, url, time_str in scored:
+                            sentiment = "🔴 Negative" if score < -0.1 else "🟡 Neutral" if score < 0.1 else "🟢 Positive"
+                            st.markdown(
+                                f"- 📰 [{headline}]({url})  \n"
+                                f"  🕒 *{time_str}* | 🌐 *{source}* — **{sentiment}** (score: {score:.2f})"
+                            )
+
+                    else:
+                        st.info(f"No recent headlines found for {ticker}.")
+                except Exception as e:
+                    st.warning(f"Could not fetch news for {ticker}: {e}")
 
     # Download All for multiple tickers
     if len(st.session_state["results"]) > 1:

@@ -2,3 +2,9 @@ yfinance
 pandas
 plotly
 streamlit
+numpy
+beautifulsoup4
+requests
+matplotlib
+seaborn
+textblob
