@@ -60,3 +60,12 @@ pip install -r requirements.txt
 python -m textblob.download_corpora
 
 streamlit run app.py
+```
+
+---
+
+## 🛜 Web App Hosted on Streamlit
+
+Don't want to install this code on your computer? Click the link below to also access the webapp!
+
+https://makennaworley-stock-market-analyzer-streamlit-app-v4z21v.streamlit.app/
